@@ -52,6 +52,7 @@ public class AutoChatbotCommand extends Command {
         return command("autoChatbot")
             // status
             .then(literal("status").executes(c -> {
+                c.getSource().getEmbed().title("Auto Chatbot Status");
                 defaultEmbed(c.getSource().getEmbed());
             }))
             // on/off
