@@ -31,12 +31,12 @@ A [ZenithProxy](https://github.com/rfresh2/ZenithProxy) plugin that automaticall
 
 | Command | Description |
 |---------|-------------|
-| `autoChatbot keyword list` | List all keywords with their index numbers |
-| `autoChatbot keyword add <keyword>` | Add a new keyword (supports spaces) |
-| `autoChatbot keyword addResponse <index> <response>` | Add a response to keyword at index |
-| `autoChatbot keyword remove <index>` | Remove keyword at index |
+| `autoChatbot keyword list` | List all keyword triggers and their responses |
+| `autoChatbot keyword add <keyword> \| <response>` | Add a new keyword with its first response |
+| `autoChatbot keyword addResponse <keyword> \| <response>` | Add another random response to an existing keyword |
+| `autoChatbot keyword remove <keyword>` | Remove a keyword and all its responses |
 
-> **Tip:** Run `keyword list` first to see indices, then use `addResponse <index> <response>` to add responses.
+> **Note:** Use `|` to separate the keyword from the response. E.g. `autoChatbot keyword add type shi | shi`
 
 ### Ignored Accounts
 
