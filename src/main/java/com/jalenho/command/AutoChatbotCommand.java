@@ -37,9 +37,9 @@ public class AutoChatbotCommand extends Command {
                 "ignore add <name>",
                 "ignore remove <name>",
                 "ignore list",
-                "keyword add <keyword> <response>",
-                "keyword addResponse <keyword> <response>",
-                "keyword remove <keyword>",
+                "keyword add <keyword>",
+                "keyword addResponse <index> <response>",
+                "keyword remove <index>",
                 "keyword list",
                 "typing on/off",
                 "typing speed <cpm>"
@@ -98,59 +98,78 @@ public class AutoChatbotCommand extends Command {
             )
             // keyword add/addResponse/remove/list
             .then(literal("keyword")
-                .then(literal("add").then(argument("keyword", string()).then(argument("response", greedyString()).executes(c -> {
-                    String keyword = getString(c, "keyword");
-                    String response = getString(c, "response").trim();
-                    // check if keyword already exists
+                // keyword add <keyword> — adds a new keyword (no initial response, use addResponse after)
+                .then(literal("add").then(argument("keyword", greedyString()).executes(c -> {
+                    String keyword = getString(c, "keyword").trim();
                     for (var entry : PLUGIN_CONFIG.keywords) {
                         if (entry.keyword.equalsIgnoreCase(keyword)) {
                             c.getSource().getEmbed()
                                 .title("Keyword Already Exists")
                                 .addField("Keyword", keyword)
-                                .addField("Hint", "Use 'keyword addResponse' to add more responses");
+                                .addField("Hint", "Use 'keyword addResponse <index> <response>' to add responses");
                             return;
                         }
                     }
-                    PLUGIN_CONFIG.keywords.add(new AutoChatbotConfig.KeywordEntry(keyword, List.of(response)));
+                    PLUGIN_CONFIG.keywords.add(new AutoChatbotConfig.KeywordEntry(keyword, new ArrayList<>()));
+                    int index = PLUGIN_CONFIG.keywords.size() - 1;
                     c.getSource().getEmbed()
                         .title("Keyword Added")
+                        .addField("Index", String.valueOf(index))
                         .addField("Keyword", keyword)
-                        .addField("Response", response);
-                }))))
-                .then(literal("addResponse").then(argument("keyword", string()).then(argument("response", greedyString()).executes(c -> {
-                    String keyword = getString(c, "keyword");
+                        .addField("Next Step", "Add responses with: keyword addResponse " + index + " <response>");
+                })))
+                // keyword addResponse <index> <response>
+                .then(literal("addResponse").then(argument("index", integer(0)).then(argument("response", greedyString()).executes(c -> {
+                    int index = getInteger(c, "index");
                     String response = getString(c, "response").trim();
-                    for (var entry : PLUGIN_CONFIG.keywords) {
-                        if (entry.keyword.equalsIgnoreCase(keyword)) {
-                            entry.responses.add(response);
-                            c.getSource().getEmbed()
-                                .title("Response Added")
-                                .addField("Keyword", keyword)
-                                .addField("New Response", response)
-                                .addField("Total Responses", String.valueOf(entry.responses.size()));
-                            return;
-                        }
+                    if (index < 0 || index >= PLUGIN_CONFIG.keywords.size()) {
+                        c.getSource().getEmbed()
+                            .title("Invalid Index")
+                            .addField("Index", String.valueOf(index))
+                            .addField("Valid Range", "0-" + (PLUGIN_CONFIG.keywords.size() - 1));
+                        return;
+                    }
+                    var entry = PLUGIN_CONFIG.keywords.get(index);
+                    entry.responses.add(response);
+                    c.getSource().getEmbed()
+                        .title("Response Added")
+                        .addField("Keyword", entry.keyword)
+                        .addField("New Response", response)
+                        .addField("Total Responses", String.valueOf(entry.responses.size()));
+                }))))
+                // keyword remove <index>
+                .then(literal("remove").then(argument("index", integer(0)).executes(c -> {
+                    int index = getInteger(c, "index");
+                    if (index < 0 || index >= PLUGIN_CONFIG.keywords.size()) {
+                        c.getSource().getEmbed()
+                            .title("Invalid Index")
+                            .addField("Index", String.valueOf(index))
+                            .addField("Valid Range", "0-" + (PLUGIN_CONFIG.keywords.size() - 1));
+                        return;
+                    }
+                    var removed = PLUGIN_CONFIG.keywords.remove(index);
+                    c.getSource().getEmbed()
+                        .title("Keyword Removed")
+                        .addField("Keyword", removed.keyword)
+                        .addField("Had Responses", String.valueOf(removed.responses.size()));
+                })))
+                // keyword list — shows indices for use with addResponse/remove
+                .then(literal("list").executes(c -> {
+                    if (PLUGIN_CONFIG.keywords.isEmpty()) {
+                        c.getSource().getEmbed()
+                            .title("Keywords")
+                            .addField("Keywords", "None");
+                        return;
+                    }
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < PLUGIN_CONFIG.keywords.size(); i++) {
+                        var k = PLUGIN_CONFIG.keywords.get(i);
+                        sb.append("[").append(i).append("] \"").append(k.keyword).append("\" → ").append(k.responses);
+                        if (i < PLUGIN_CONFIG.keywords.size() - 1) sb.append("\n");
                     }
                     c.getSource().getEmbed()
-                        .title("Keyword Not Found")
-                        .addField("Keyword", keyword);
-                }))))
-                .then(literal("remove").then(argument("keyword", greedyString()).executes(c -> {
-                    String keyword = getString(c, "keyword").trim();
-                    boolean removed = PLUGIN_CONFIG.keywords.removeIf(k -> k.keyword.equalsIgnoreCase(keyword));
-                    c.getSource().getEmbed()
-                        .title(removed ? "Keyword Removed" : "Keyword Not Found")
-                        .addField("Keyword", keyword);
-                })))
-                .then(literal("list").executes(c -> {
-                    String keywordList = PLUGIN_CONFIG.keywords.isEmpty()
-                        ? "None"
-                        : PLUGIN_CONFIG.keywords.stream()
-                            .map(k -> "\"" + k.keyword + "\" → " + k.responses)
-                            .collect(Collectors.joining("\n"));
-                    c.getSource().getEmbed()
                         .title("Keywords")
-                        .addField("Keywords", keywordList);
+                        .addField("Keywords", sb.toString());
                 }))
             )
             // typing on/off, typing speed <cpm>
