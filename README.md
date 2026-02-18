@@ -23,7 +23,7 @@ A [ZenithProxy](https://github.com/rfresh2/ZenithProxy) plugin that automaticall
 
 | Command | Description |
 |---------|-------------|
-| `autoChatbot` | Show current status, keywords, and all settings |
+| `autoChatbot status` | Show current status, keywords, and all settings |
 | `autoChatbot on/off` | Toggle the chatbot module |
 | `autoChatbot cooldown <ms>` | Set response cooldown in milliseconds |
 

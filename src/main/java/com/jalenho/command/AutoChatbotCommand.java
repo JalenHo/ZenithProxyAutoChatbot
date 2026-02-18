@@ -31,6 +31,7 @@ public class AutoChatbotCommand extends Command {
                 Auto Chatbot - responds to keywords in chat
                 """)
             .usageLines(
+                "status",
                 "on/off",
                 "cooldown <ms>",
                 "ignore add <name>",
@@ -49,6 +50,10 @@ public class AutoChatbotCommand extends Command {
     @Override
     public LiteralArgumentBuilder<CommandContext> register() {
         return command("autoChatbot")
+            // status
+            .then(literal("status").executes(c -> {
+                defaultEmbed(c.getSource().getEmbed());
+            }))
             // on/off
             .then(argument("toggle", toggle()).executes(c -> {
                 PLUGIN_CONFIG.enabled = getToggle(c, "toggle");
