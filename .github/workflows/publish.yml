@@ -5,6 +5,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -37,12 +40,10 @@ jobs:
           name: plugin
           path: build/libs/*.jar
 
-      - name: Get Plugin Version
-        run: echo "PLUGIN_VERSION=$(grep '^plugin_version=' gradle.properties | cut -d'=' -f2)" >> $GITHUB_ENV
-
       - name: Publish Plugin Github Release
         uses: ncipollo/release-action@v1
         with:
-          tag: ${{ env.PLUGIN_VERSION }}
+          tag: ${{ github.ref_name }}
           artifacts: build/libs/*.jar
           generateReleaseNotes: true
+
