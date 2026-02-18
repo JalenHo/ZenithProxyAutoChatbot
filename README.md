@@ -1,75 +1,84 @@
-# ZenithProxy Example Plugin
+# ZenithProxy Auto Chatbot Plugin
 
-[ZenithProxy](https://github.com/rfresh2/ZenithProxy) is a Minecraft proxy and bot.
+A [ZenithProxy](https://github.com/rfresh2/ZenithProxy) plugin that automatically responds to keyword triggers in server chat.
 
-This repository is an example core plugin for ZenithProxy, allowing you to add custom modules and commands.
+## Features
 
-## Installing Plugins
+- **Keyword Triggers** — Define keywords that the bot listens for in public chat messages
+- **Random Responses** — Each keyword maps to a list of responses; one is picked at random
+- **Cooldown** — Configurable cooldown (default 3 seconds) to prevent spam
+- **Multi-Bot Support** — Configure a list of accounts to ignore (useful when multiple bots are on the same server)
+- **Case-Insensitive** — Keyword matching is case-insensitive and works as substring matching
 
-Plugins are only supported on the `java` ZenithProxy release channel (i.e. not `linux`).
+## Default Keywords
 
-Place plugin jars in the `plugins` folder inside the same folder as the ZenithProxy launcher.
+| Keyword | Responses |
+|---------|-----------|
+| `type shi` | `shi` |
+| `6 or 7` | `67` |
 
-Restart ZenithProxy to load plugins. Loading plugins after launch or hot reloading is not supported.
+You can add more keywords by editing the plugin's JSON config file (`auto-chatbot.json`) in your ZenithProxy directory.
 
-## Creating Plugins
+## Commands
 
-Use this repository as a template to create your own plugin repository.
+| Command | Description |
+|---------|-------------|
+| `autoChatbot` | Show current status and keyword list |
+| `autoChatbot on/off` | Toggle the chatbot module |
+| `autoChatbot cooldown <ms>` | Set response cooldown in milliseconds |
 
-### Plugin Structure
+## Configuration
 
-Each plugin needs a main class that implements `ZenithProxyPlugin` and is annotated with `@Plugin`.
+The plugin config (`auto-chatbot.json`) is auto-generated on first run:
 
-Plugin metadata like its unique id, version, and supported MC versions is defined in the `@Plugin` annotation.
+```json
+{
+  "enabled": true,
+  "cooldownMs": 3000,
+  "ignoredAccounts": [],
+  "keywords": [
+    {
+      "keyword": "type shi",
+      "responses": ["shi"]
+    },
+    {
+      "keyword": "6 or 7",
+      "responses": ["67"]
+    }
+  ]
+}
+```
 
-[See example](https://github.com/rfresh2/ZenithProxyExamplePlugin/blob/1.21.4/src/main/java/org/example/ExamplePlugin.java)
+### Adding Keywords
 
-### Plugin API
+Edit the `keywords` array in the config. Each entry has:
+- `keyword` — the trigger phrase (case-insensitive substring match)
+- `responses` — list of possible responses (one chosen at random)
 
-The `ZenithProxyPlugin` interface requires you to implement an `onLoad` method.
+### Ignoring Accounts
 
-This method provides a `PluginAPI` object that you can use to register modules, commands, and config files.
+Add player names to `ignoredAccounts` to prevent the bot from responding to those accounts:
 
-`Module` and `Command` classes are implemented the same as in the ZenithProxy source code.
+```json
+{
+  "ignoredAccounts": ["MyOtherBot", "AnotherBot"]
+}
+```
 
-I recommend looking at existing modules, commands, and plugins for examples.
+## Installation
 
-* [Module](https://github.com/rfresh2/ZenithProxy/tree/1.21.4/src/main/java/com/zenith/module)
-* [Command](https://github.com/rfresh2/ZenithProxy/tree/1.21.4/src/main/java/com/zenith/command)
-* Plugins
-  * [ZenithProxyVillagerTrader](https://github.com/rfresh2/ZenithProxyVillagerTrader)
-  * [ZenithProxyWebAPI](https://github.com/rfresh2/ZenithProxyWebAPI)
-  * [ZenithProxyChatControl](https://github.com/rfresh2/ZenithProxyChatControl)
-  * More in [my discord server](https://discord.com/channels/1127460556710883391/1369081651564515358)
+1. Download the latest release JAR from [Releases](https://github.com/JalenHo/ZenithProxyAutoChatbot/releases)
+2. Place the JAR in the `plugins` folder of your ZenithProxy installation
+3. Restart ZenithProxy
 
-### JavaDocs
+## Building from Source
 
-https://maven.2b2t.vc/javadoc/releases/com/zenith/ZenithProxy/1.21.4-SNAPSHOT
+```bash
+./gradlew build
+```
 
-### Building Plugins
+The built plugin JAR will be in `build/libs/`.
 
-Execute the Gradle `build` task: `./gradlew build` - or double-click the task in Intellij
+## License
 
-The built plugin jar will be in the `build/libs` directory.
-
-### Testing Plugins
-
-Execute the `run` task: `./gradlew run` - or double-click the task in Intellij
-
-This will run ZenithProxy with your plugin loaded in the `run` directory.
-
-### New Plugin Checklist
-
-1. Edit `gradle.properties`:
-   - `plugin_name` - Name of your plugin, shown to users and in the plugin jar file name (e.g. `ExamplePlugin`)
-   - `plugin_id` - Unique identifier for your plugin (e.g. `example-plugin`)
-     - Must start with a lowercase letter and contain only lowercase letters, numbers, or dashes (`-`)
-   - `mc` - MC version of ZenithProxy your plugin is compiled for (e.g. `1.21.4`)
-   - `maven_group` - Java package for your project (e.g. `com.github.rfresh2`)
-1. Move files to your new corresponding package / maven group:
-   - Example: `src/main/java/org/example` -> `src/main/java/com/github/rfresh2`
-   - First create the new package in `src/main/java`. Then click and drag original subpackages/classes to your new one
-   - Do this with Intellij to avoid manually editing all the source files
-   - You must also create and move package folders for the `src/main/templates` folder
-1. Edit `ExamplePlugin.java`, or remove it and create a new main class
-   - Make sure to update the `@Plugin` annotation
+This project is licensed under the GNU General Public License v3.0 — see the [LICENSE](LICENSE) file for details.
