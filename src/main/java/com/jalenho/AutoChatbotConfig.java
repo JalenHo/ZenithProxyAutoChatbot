@@ -14,6 +14,14 @@ public class AutoChatbotConfig {
     public int cooldownMs = 3000;
     public List<String> ignoredAccounts = new ArrayList<>();
 
+    public final TypingDelayConfig typingDelay = new TypingDelayConfig();
+    public static class TypingDelayConfig {
+        /** Whether to simulate human typing delay before sending */
+        public boolean enabled = true;
+        /** Characters per minute — average human is ~200 CPM (roughly 40 WPM) */
+        public int charsPerMinute = 200;
+    }
+
     public final List<KeywordEntry> keywords = new ArrayList<>(List.of(
         new KeywordEntry("type shi", List.of("shi")),
         new KeywordEntry("6 or 7", List.of("67"))
