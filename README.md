@@ -1,4 +1,4 @@
-# ZenithProxy Auto Chatbot Plugin
+# ZenithProxy Chatbot Plugin
 
 A [ZenithProxy](https://github.com/rfresh2/ZenithProxy) plugin that automatically responds to keyword triggers in server chat.
 
