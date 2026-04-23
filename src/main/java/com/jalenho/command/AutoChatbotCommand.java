@@ -9,7 +9,6 @@ import com.zenith.command.api.CommandContext;
 import com.zenith.command.api.CommandUsage;
 import com.zenith.discord.Embed;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -28,7 +27,7 @@ public class AutoChatbotCommand extends Command {
             .name("autoChatbot")
             .category(CommandCategory.MODULE)
             .description("""
-                Auto Chatbot - responds to keywords in chat
+                Auto Chatbot - responds to keywords in chat and AI commands
                 """)
             .usageLines(
                 "status",
@@ -37,12 +36,22 @@ public class AutoChatbotCommand extends Command {
                 "ignore add <name>",
                 "ignore remove <name>",
                 "ignore list",
-                "keyword add <keyword> <response>",
-                "keyword addResponse <keyword> <response>",
+                "keyword add <keyword> | <response>",
+                "keyword addResponse <keyword> | <response>",
                 "keyword remove <keyword>",
                 "keyword list",
                 "typing on/off",
-                "typing speed <cpm>"
+                "typing speed <cpm>",
+                "ai on/off",
+                "ai serverChat on/off",
+                "ai apiKey <key>",
+                "ai model <model>",
+                "ai prompt <system-prompt>",
+                "ai contextLength <count>",
+                "ai triggerKeyword add <keyword>",
+                "ai triggerKeyword remove <keyword>",
+                "ai triggerKeyword list",
+                "ai memory clear <player>"
             )
             .build();
     }
@@ -58,7 +67,7 @@ public class AutoChatbotCommand extends Command {
             // on/off
             .then(argument("toggle", toggle()).executes(c -> {
                 PLUGIN_CONFIG.enabled = getToggle(c, "toggle");
-                MODULE.get(AutoChatbotModule.class).syncEnabledFromConfig();
+                syncModule();
                 c.getSource().getEmbed()
                     .title("Auto Chatbot " + toggleStrCaps(PLUGIN_CONFIG.enabled));
             }))
@@ -122,7 +131,7 @@ public class AutoChatbotCommand extends Command {
                                 .title("Keyword Already Exists")
                                 .addField("Keyword", keyword)
                                 .addField("Hint", "Use 'keyword addResponse' to add more responses");
-                            return;
+                        return;
                         }
                     }
                     PLUGIN_CONFIG.keywords.add(new AutoChatbotConfig.KeywordEntry(keyword, List.of(response)));
@@ -156,7 +165,7 @@ public class AutoChatbotCommand extends Command {
                                 .addField("Keyword", keyword)
                                 .addField("New Response", response)
                                 .addField("Total Responses", String.valueOf(entry.responses.size()));
-                            return;
+                        return;
                         }
                     }
                     c.getSource().getEmbed()
@@ -193,8 +202,99 @@ public class AutoChatbotCommand extends Command {
                     c.getSource().getEmbed()
                         .title("Typing Speed Set")
                         .addField("Speed", PLUGIN_CONFIG.typingDelay.charsPerMinute + " CPM")
-                        .addField("≈ WPM", String.valueOf(PLUGIN_CONFIG.typingDelay.charsPerMinute / 5));
+                        .addField("~ WPM", String.valueOf(PLUGIN_CONFIG.typingDelay.charsPerMinute / 5));
                 })))
+            )
+            // ==================== AI Commands ====================
+            .then(literal("ai")
+                // ai on/off
+                .then(argument("toggle", toggle()).executes(c -> {
+                    PLUGIN_CONFIG.aiEnabled = getToggle(c, "toggle");
+                    MODULE.get(AutoChatbotModule.class).syncAIFromConfig();
+                    c.getSource().getEmbed()
+                        .title("AI Chatbot " + toggleStrCaps(PLUGIN_CONFIG.aiEnabled));
+                }))
+                // ai serverChat on/off
+                .then(literal("serverChat").then(argument("toggle", toggle()).executes(c -> {
+                    PLUGIN_CONFIG.aiServerChatEnabled = getToggle(c, "toggle");
+                    c.getSource().getEmbed()
+                        .title("AI Server Chat " + toggleStrCaps(PLUGIN_CONFIG.aiServerChatEnabled))
+                        .addField("Note", "When enabled, AI will respond to server chat when trigger keywords are matched");
+                })))
+                // ai apiKey <key>
+                .then(literal("apiKey").then(argument("key", greedyString()).executes(c -> {
+                    String key = getString(c, "key").trim();
+                    PLUGIN_CONFIG.openaiApiKey = key;
+                    MODULE.get(AutoChatbotModule.class).syncAIFromConfig();
+                    c.getSource().getEmbed()
+                        .title("OpenAI API Key Set")
+                        .addField("Model", PLUGIN_CONFIG.openaiModel);
+                })))
+                // ai model <model>
+                .then(literal("model").then(argument("model", greedyString()).executes(c -> {
+                    String model = getString(c, "model").trim();
+                    PLUGIN_CONFIG.openaiModel = model;
+                    MODULE.get(AutoChatbotModule.class).syncAIFromConfig();
+                    c.getSource().getEmbed()
+                        .title("OpenAI Model Set")
+                        .addField("Model", model);
+                })))
+                // ai prompt <prompt>
+                .then(literal("prompt").then(argument("prompt", greedyString()).executes(c -> {
+                    String prompt = getString(c, "prompt").trim();
+                    PLUGIN_CONFIG.aiSystemPrompt = prompt;
+                    c.getSource().getEmbed()
+                        .title("AI System Prompt Set")
+                        .addField("Prompt", prompt.length() > 100 ? prompt.substring(0, 100) + "..." : prompt)
+                        .addField("Length", prompt.length() + " characters");
+                })))
+                // ai contextLength <count>
+                .then(literal("contextLength").then(argument("count", integer(0, 100)).executes(c -> {
+                    int count = getInteger(c, "count");
+                    PLUGIN_CONFIG.aiChatContextLength = count;
+                    c.getSource().getEmbed()
+                        .title("AI Context Length Set")
+                        .addField("Context Messages", count)
+                        .addField("Note", count == 0 ? "Server chat context disabled" : "Will include last " + count + " messages as context");
+                })))
+                // ai triggerKeyword add/remove/list
+                .then(literal("triggerKeyword")
+                    .then(literal("add").then(argument("keyword", greedyString()).executes(c -> {
+                        String keyword = getString(c, "keyword").trim();
+                        if (!PLUGIN_CONFIG.aiTriggerKeywords.contains(keyword)) {
+                            PLUGIN_CONFIG.aiTriggerKeywords.add(keyword);
+                        }
+                        c.getSource().getEmbed()
+                            .title("AI Trigger Keyword Added")
+                            .addField("Keyword", keyword)
+                            .addField("Total Keywords", String.valueOf(PLUGIN_CONFIG.aiTriggerKeywords.size()));
+                    })))
+                    .then(literal("remove").then(argument("keyword", greedyString()).executes(c -> {
+                        String keyword = getString(c, "keyword").trim();
+                        boolean removed = PLUGIN_CONFIG.aiTriggerKeywords.removeIf(k -> k.equalsIgnoreCase(keyword));
+                        c.getSource().getEmbed()
+                            .title(removed ? "AI Trigger Keyword Removed" : "Keyword Not Found")
+                            .addField("Keyword", keyword);
+                    })))
+                    .then(literal("list").executes(c -> {
+                        c.getSource().getEmbed()
+                            .title("AI Trigger Keywords")
+                            .addField("Keywords", PLUGIN_CONFIG.aiTriggerKeywords.isEmpty()
+                                ? "None (AI will not auto-respond in server chat)"
+                                : String.join(", ", PLUGIN_CONFIG.aiTriggerKeywords));
+                    }))
+                )
+                // ai memory clear <player>
+                .then(literal("memory")
+                    .then(literal("clear").then(argument("player", string()).executes(c -> {
+                        String playerName = getString(c, "player").trim();
+                        var module = MODULE.get(AutoChatbotModule.class);
+                        module.clearPlayerMemory(playerName);
+                        c.getSource().getEmbed()
+                            .title("Player Memory Cleared")
+                            .addField("Player", playerName);
+                    })))
+                )
             );
     }
 
@@ -214,6 +314,29 @@ public class AutoChatbotCommand extends Command {
                 ? "None"
                 : PLUGIN_CONFIG.keywords.stream()
                     .map(k -> "\"" + k.keyword + "\" → " + k.responses)
-                    .collect(Collectors.joining("\n")));
+                    .collect(Collectors.joining("\n")))
+            // AI Section
+            .addField("", "─────────── AI Configuration ───────────")
+            .addField("AI Enabled", toggleStr(PLUGIN_CONFIG.aiEnabled))
+            .addField("AI Server Chat", toggleStr(PLUGIN_CONFIG.aiServerChatEnabled))
+            .addField("OpenAI Model", PLUGIN_CONFIG.openaiModel)
+            .addField("Context Length", PLUGIN_CONFIG.aiChatContextLength + " messages")
+            .addField("Trigger Keywords", PLUGIN_CONFIG.aiTriggerKeywords.isEmpty()
+                ? "None (use /autoChatbot ai triggerKeyword add <keyword>)"
+                : String.join(", ", PLUGIN_CONFIG.aiTriggerKeywords))
+            .addField("API Key Set", PLUGIN_CONFIG.openaiApiKey.isEmpty() ? "No" : "Yes (****" + maskedKey() + ")")
+            .addField("System Prompt", PLUGIN_CONFIG.aiSystemPrompt.length() > 50
+                ? PLUGIN_CONFIG.aiSystemPrompt.substring(0, 50) + "..."
+                : PLUGIN_CONFIG.aiSystemPrompt);
+    }
+
+    private String maskedKey() {
+        String key = PLUGIN_CONFIG.openaiApiKey;
+        if (key == null || key.length() < 8) return "****";
+        return key.substring(key.length() - 4);
+    }
+
+    private void syncModule() {
+        MODULE.get(AutoChatbotModule.class).syncEnabledFromConfig();
     }
 }

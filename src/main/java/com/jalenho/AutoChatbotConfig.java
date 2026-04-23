@@ -38,4 +38,43 @@ public class AutoChatbotConfig {
             this.responses = new ArrayList<>(responses);
         }
     }
+
+    // ==================== AI Configuration ====================
+
+    /** Enable AI-powered responses via OpenAI API */
+    public boolean aiEnabled = false;
+
+    /** Toggle whether bot reads and responds to server chat via AI */
+    public boolean aiServerChatEnabled = false;
+
+    /** OpenAI API key for AI responses */
+    public String openaiApiKey = "";
+
+    /** OpenAI model to use (e.g., gpt-4o-mini, gpt-4o) */
+    public String openaiModel = "gpt-4o-mini";
+
+    /** System prompt for the AI agent's personality and behavior */
+    public String aiSystemPrompt = "You are a helpful assistant responding in Minecraft chat. Keep responses brief and conversational. You have memory of previous conversations.";
+
+    /** Maximum number of recent chat messages to include as context (0 = disabled) */
+    public int aiChatContextLength = 10;
+
+    /** Keywords that trigger AI response in server chat (default: bot account name) */
+    public List<String> aiTriggerKeywords = new ArrayList<>();
+
+    /** Path to AI memory directory (relative to ZenithProxy data folder) */
+    public String aiMemoryPath = "plugins/auto-chatbot/memory/";
+
+    // ==================== AI Channel Commands ====================
+
+    /**
+     * DM Commands - When a player /msg to the bot, it will respond via AI.
+     * This is enabled by default when aiEnabled = true.
+     */
+
+    /**
+     * Server Chat Commands - Toggle to enable AI reading server chat.
+     * Use: /autoChatbot ai serverChat on/off
+     * When enabled, AI reads server chat and responds when trigger keywords match.
+     */
 }
