@@ -1,5 +1,7 @@
 package com.jalenho.command;
 
+import com.jalenho.ai.AIMemoryManager;
+import com.jalenho.ai.CodexConfigLoader;
 import com.jalenho.AutoChatbotConfig;
 import com.jalenho.module.AutoChatbotModule;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -51,7 +53,9 @@ public class AutoChatbotCommand extends Command {
                 "ai triggerKeyword add <keyword>",
                 "ai triggerKeyword remove <keyword>",
                 "ai triggerKeyword list",
-                "ai memory clear <player>"
+                "ai memory clear <player>",
+                "ai reasoningEffort <level>",
+                "ai loadConfig"
             )
             .build();
     }
@@ -295,6 +299,41 @@ public class AutoChatbotCommand extends Command {
                             .addField("Player", playerName);
                     })))
                 )
+                // ai reasoningEffort <level>
+                .then(literal("reasoningEffort").then(argument("level", greedyString()).executes(c -> {
+                    String level = getString(c, "level").trim().toLowerCase();
+                    if (!level.matches("^(low|medium|high|xhigh)$")) {
+                        c.getSource().getEmbed()
+                            .title("Invalid Reasoning Effort")
+                            .addField("Valid Options", "low, medium, high, xhigh")
+                            .addField("Got", level);
+                        return;
+                    }
+                    PLUGIN_CONFIG.openaiReasoningEffort = level;
+                    MODULE.get(AutoChatbotModule.class).syncAIFromConfig();
+                    c.getSource().getEmbed()
+                        .title("AI Reasoning Effort Set")
+                        .addField("Level", level);
+                })))
+                // ai loadConfig - load from codex config.toml + auth.json
+                .then(literal("loadConfig").executes(c -> {
+                    CodexConfigLoader loader = new CodexConfigLoader();
+                    if (loader.load()) {
+                        loader.applyToConfig(PLUGIN_CONFIG);
+                        MODULE.get(AutoChatbotModule.class).syncAIFromConfig();
+                        c.getSource().getEmbed()
+                            .title("Codex Config Loaded")
+                            .addField("Model", loader.getModel() != null ? loader.getModel() : "(unchanged)")
+                            .addField("Base URL", loader.getBaseUrl() != null ? loader.getBaseUrl() : "(unchanged)")
+                            .addField("Reasoning Effort", loader.getReasoningEffort() != null ? loader.getReasoningEffort() : "(unchanged)")
+                            .addField("API Key", loader.getApiKey() != null ? "Set (****" + loader.getApiKey().substring(Math.max(0, loader.getApiKey().length() - 4)) + ")" : "(unchanged)");
+                    } else {
+                        c.getSource().getEmbed()
+                            .title("Config Load Failed")
+                            .addField("Missing", CodexConfigLoader.CODEX_DIR.resolve("config.toml").toString())
+                            .addField("Hint", "Place config.toml and auth.json in: " + CodexConfigLoader.CODEX_DIR);
+                    }
+                }))
             );
     }
 

@@ -50,8 +50,14 @@ public class AutoChatbotConfig {
     /** OpenAI API key for AI responses */
     public String openaiApiKey = "";
 
-    /** OpenAI model to use (e.g., gpt-4o-mini, gpt-4o) */
+    /** OpenAI model to use (e.g., gpt-4o-mini, gpt-4o, gpt-5.4) */
     public String openaiModel = "gpt-4o-mini";
+
+    /** Base URL for OpenAI API (default: official OpenAI endpoint) */
+    public String openaiBaseUrl = "https://api.openai.com";
+
+    /** Reasoning effort for supported models: low, medium, high, xhigh */
+    public String openaiReasoningEffort = "";
 
     /** System prompt for the AI agent's personality and behavior */
     public String aiSystemPrompt = "You are a helpful assistant responding in Minecraft chat. Keep responses brief and conversational. You have memory of previous conversations.";

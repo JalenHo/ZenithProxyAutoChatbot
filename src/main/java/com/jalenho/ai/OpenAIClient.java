@@ -20,19 +20,26 @@ import java.util.concurrent.Semaphore;
  * Sends messages and returns AI-generated responses.
  */
 public class OpenAIClient {
-    private static final String OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
     private static final int MAX_REQUEST_TIMEOUT_SECONDS = 30;
     private static final int MAX_CONCURRENT_REQUESTS = 5;
 
     private final String apiKey;
     private final String model;
+    private final String baseUrl;
+    private final String reasoningEffort;
     private final HttpClient httpClient;
     private final ExecutorService executorService;
     private final Semaphore requestSemaphore;
 
     public OpenAIClient(String apiKey, String model) {
+        this(apiKey, model, "https://api.openai.com", "");
+    }
+
+    public OpenAIClient(String apiKey, String model, String baseUrl, String reasoningEffort) {
         this.apiKey = apiKey;
         this.model = model;
+        this.baseUrl = baseUrl != null && !baseUrl.isBlank() ? baseUrl : "https://api.openai.com";
+        this.reasoningEffort = reasoningEffort != null ? reasoningEffort : "";
         this.httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
@@ -89,12 +96,20 @@ public class OpenAIClient {
         }
 
         jsonBuilder.append("]");
-        jsonBuilder.append(",\"max_tokens\":500");
-        jsonBuilder.append(",\"temperature\":0.8}");
+        jsonBuilder.append(",\"max_tokens\":80");
+        jsonBuilder.append(",\"temperature\":0.8");
+
+        // Add reasoning_effort for supported models (low/medium/high/xhigh)
+        if (!reasoningEffort.isBlank()) {
+            jsonBuilder.append(",\"reasoning_effort\":\"").append(escapeJson(reasoningEffort)).append("\"");
+        }
+
+        jsonBuilder.append("}");
         String requestBody = jsonBuilder.toString();
 
+        String apiUrl = baseUrl + "/v1/chat/completions";
         HttpRequest httpRequest = HttpRequest.newBuilder()
-            .uri(URI.create(OPENAI_API_URL))
+            .uri(URI.create(apiUrl))
             .timeout(Duration.ofSeconds(MAX_REQUEST_TIMEOUT_SECONDS))
             .header("Content-Type", "application/json")
             .header("Authorization", "Bearer " + apiKey)
@@ -104,12 +119,16 @@ public class OpenAIClient {
         try {
             HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
 
+            AutoChatbotPlugin.LOG.debug("API response (HTTP {}): {}", response.statusCode(),
+                    response.body().length() > 500 ? response.body().substring(0, 500) + "..." : response.body());
+
             if (response.statusCode() == 200) {
                 String content = extractContentFromResponse(response.body());
                 if (content != null && !content.isEmpty()) {
                     return content;
                 }
-                AutoChatbotPlugin.LOG.error("OpenAI returned empty response content");
+                AutoChatbotPlugin.LOG.error("OpenAI returned empty response content. Raw response: {}",
+                        response.body().length() > 300 ? response.body().substring(0, 300) + "..." : response.body());
                 return "";
             } else if (response.statusCode() == 401) {
                 AutoChatbotPlugin.LOG.error("OpenAI API authentication failed. Check your API key.");
@@ -132,20 +151,123 @@ public class OpenAIClient {
     }
 
     /**
-     * Extract content from OpenAI response
+     * Extract content from OpenAI response.
+     * Supports both Chat Completions API and Responses API formats.
+     *
+     * Chat Completions: {"choices":[{"message":{"content":"text"}}]}
+     * Responses API:    {"output":[{"content":[{"text":"text"}]}]}
+     *                   or {"output_text":"text"}
      */
     private String extractContentFromResponse(String json) {
-        // Find: "content":"text"}
-        // or: "content":"text"}],"usage"
-        int contentIndex = json.indexOf("\"content\":\"");
-        if (contentIndex == -1) {
-            contentIndex = json.indexOf("\"content\": \"");
+        // 1. Try Responses API: "output_text":"..." (simplest format)
+        String outputText = extractJsonStringValue(json, "\"output_text\"");
+        if (outputText != null) return outputText;
+
+        // 2. Try Responses API: "output":[{"content":[{"text":"..."}]}]
+        String responseText = extractNestedResponseValue(json);
+        if (responseText != null) return responseText;
+
+        // 3. Try Chat Completions: "content":"..." inside choices[0].message
+        return extractChatCompletionContent(json);
+    }
+
+    /**
+     * Extract a string value after a JSON key like "output_text":"value"
+     */
+    private String extractJsonStringValue(String json, String key) {
+        int idx = json.indexOf(key + ":");
+        if (idx == -1) idx = json.indexOf(key + " :");
+        if (idx == -1) return null;
+
+        int colon = json.indexOf(':', idx + key.length());
+        if (colon == -1) return null;
+
+        int start = colon + 1;
+        while (start < json.length() && json.charAt(start) == ' ') start++;
+        if (start >= json.length() || json.charAt(start) != '"') return null;
+        start++;
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = start; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '\\' && i + 1 < json.length()) {
+                sb.append(json.charAt(++i));
+            } else if (c == '"') {
+                break;
+            } else {
+                sb.append(c);
+            }
         }
-        if (contentIndex == -1) {
-            return null;
+        return sb.toString();
+    }
+
+    /**
+     * Extract from Responses API nested format: "text":"..." inside output -> content -> text
+     */
+    private String extractNestedResponseValue(String json) {
+        // Find "text":"..." pattern inside "content":[{  ...  }]
+        int contentArray = json.indexOf("\"content\":[");
+        if (contentArray == -1) return null;
+
+        // Look for "text":"..." after this point
+        int textIndex = json.indexOf("\"text\":\"", contentArray);
+        if (textIndex == -1) textIndex = json.indexOf("\"text\": \"", contentArray);
+        if (textIndex == -1) return null;
+
+        int start = textIndex + 7; // skip "text":"
+        if (json.charAt(start - 1) == ' ') start++; // handle "text": "
+        start++; // skip opening quote
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = start; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '\\' && i + 1 < json.length()) {
+                sb.append(json.charAt(++i));
+            } else if (c == '"') {
+                break;
+            } else {
+                sb.append(c);
+            }
+        }
+        return unescapeJson(sb.toString());
+    }
+
+    /**
+     * Extract from Chat Completions format: "content":"..." inside message.
+     * Finds the LAST "content":" match since reasoning_content appears before it.
+     */
+    private String extractChatCompletionContent(String json) {
+        // Find ALL occurrences of "content":" and take the last one
+        // (reasoning_content comes first, actual content comes last)
+        int lastContentIndex = -1;
+        int lastSkipLen = -1;
+        int searchFrom = 0;
+        while (true) {
+            int idx = json.indexOf("\"content\":\"", searchFrom);
+            int skipLen = 11; // "content":" + opening quote = 11 chars to value start
+            if (idx == -1) {
+                idx = json.indexOf("\"content\": \"", searchFrom);
+                skipLen = 12; // "content": " + opening quote = 12 chars
+            }
+            if (idx == -1) break;
+
+            // Skip if this is "reasoning_content"
+            if (idx >= 11) {
+                String before = json.substring(idx - 10, idx);
+                if (before.equals("reasoning_")) {
+                    searchFrom = idx + 1;
+                    continue;
+                }
+            }
+
+            lastContentIndex = idx;
+            lastSkipLen = skipLen;
+            searchFrom = idx + 1;
         }
 
-        int start = contentIndex + 10; // skip past "content":" or "content": "
+        if (lastContentIndex == -1) return null;
+
+        int start = lastContentIndex + lastSkipLen;
         int end = start;
 
         while (end < json.length()) {

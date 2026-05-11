@@ -20,6 +20,7 @@ import static com.jalenho.AutoChatbotPlugin.PLUGIN_CONFIG;
 import com.jalenho.ai.AIMemoryManager;
 import com.jalenho.ai.OpenAIClient;
 import com.jalenho.ai.ConversationMessage;
+import com.jalenho.ai.CodexConfigLoader;
 
 /**
  * Core module that listens for chat events, matches keywords, and sends responses.
@@ -56,16 +57,24 @@ public class AutoChatbotModule extends Module {
     }
 
     /**
-     * Initialize AI components if AI is enabled
+     * Initialize AI components if AI is enabled.
+     * Tries to load from Codex config files first (config.toml + auth.json).
      */
     private void initializeAI() {
+        // Try loading from Codex config files first
+        CodexConfigLoader codexLoader = new CodexConfigLoader();
+        if (codexLoader.load()) {
+            codexLoader.applyToConfig(PLUGIN_CONFIG);
+            LOG.info("AI configuration loaded from Codex config files");
+        }
+
         if (!PLUGIN_CONFIG.aiEnabled) {
             LOG.info("AI functionality is disabled");
             return;
         }
 
         if (PLUGIN_CONFIG.openaiApiKey == null || PLUGIN_CONFIG.openaiApiKey.isBlank()) {
-            LOG.warn("AI enabled but OpenAI API key not configured. Use /autoChatbot ai apiKey <key>");
+            LOG.warn("AI enabled but OpenAI API key not configured. Use /autoChatbot ai apiKey <key> or place auth.json in plugins/auto-chatbot/codex/");
             return;
         }
 
@@ -74,26 +83,36 @@ public class AutoChatbotModule extends Module {
         var memoryPath = dataDir.resolve(PLUGIN_CONFIG.aiMemoryPath);
         aiMemoryManager = new AIMemoryManager(memoryPath);
 
-        // Initialize OpenAI client
-        openAIClient = new OpenAIClient(PLUGIN_CONFIG.openaiApiKey, PLUGIN_CONFIG.openaiModel);
+        // Initialize OpenAI client with config from Codex files if available
+        openAIClient = new OpenAIClient(
+            PLUGIN_CONFIG.openaiApiKey,
+            PLUGIN_CONFIG.openaiModel,
+            PLUGIN_CONFIG.openaiBaseUrl,
+            PLUGIN_CONFIG.openaiReasoningEffort
+        );
 
-        LOG.info("AI Chatbot initialized with model: {}", PLUGIN_CONFIG.openaiModel);
+        LOG.info("AI Chatbot initialized with model: {}, base_url: {}, reasoning_effort: {}",
+                PLUGIN_CONFIG.openaiModel, PLUGIN_CONFIG.openaiBaseUrl,
+                PLUGIN_CONFIG.openaiReasoningEffort.isEmpty() ? "default" : PLUGIN_CONFIG.openaiReasoningEffort);
         if (!PLUGIN_CONFIG.aiServerChatEnabled) {
             LOG.info("AI Server Chat listening is disabled. Use /autoChatbot ai serverChat on to enable.");
         }
     }
 
     /**
-     * Shutdown AI components
+     * Shutdown AI components (memory + client only).
+     * The scheduler thread pool is NOT shut down here — it stays alive
+     * for typing delay messages sent while AI is re-initialized.
      */
     private void shutdownAI() {
         if (aiMemoryManager != null) {
             aiMemoryManager.saveAll();
+            aiMemoryManager = null;
         }
         if (openAIClient != null) {
             openAIClient.shutdown();
+            openAIClient = null;
         }
-        scheduler.shutdown();
     }
 
     /**
@@ -106,7 +125,9 @@ public class AutoChatbotModule extends Module {
 
     @Override
     public boolean enabledSetting() {
-        return PLUGIN_CONFIG.enabled;
+        // Module is enabled if either keyword auto-chat OR AI is enabled.
+        // Each feature checks its own toggle internally.
+        return PLUGIN_CONFIG.enabled || PLUGIN_CONFIG.aiEnabled;
     }
 
     @Override
@@ -137,18 +158,21 @@ public class AutoChatbotModule extends Module {
         String message = event.message();
         String messageLower = message.toLowerCase();
 
-        // Store message in chat history for AI context
+        // ---- AI Server Chat ----
         if (PLUGIN_CONFIG.aiEnabled && PLUGIN_CONFIG.aiServerChatEnabled && PLUGIN_CONFIG.aiChatContextLength > 0) {
             addToChatHistory(senderName, message);
         }
 
-        // Check AI triggers in server chat
         if (PLUGIN_CONFIG.aiEnabled && PLUGIN_CONFIG.aiServerChatEnabled && shouldTriggerAI(messageLower)) {
             handleAIServerChatResponse(senderName, message);
             return;
         }
 
-        // Check keyword-based responses (existing functionality)
+        // ---- Keyword Auto-Chat (only when autoChatbot is on) ----
+        if (!PLUGIN_CONFIG.enabled) {
+            return;
+        }
+
         // check cooldown
         long now = System.currentTimeMillis();
         if (now - lastResponseTime < PLUGIN_CONFIG.cooldownMs) {
@@ -175,7 +199,8 @@ public class AutoChatbotModule extends Module {
     }
 
     /**
-     * Handle whisper/private messages (DM to bot)
+     * Handle whisper/private messages (DM to bot).
+     * AI only — works independently of keyword auto-chat.
      */
     private void onWhisperChat(WhisperChatEvent event) {
         if (!PLUGIN_CONFIG.aiEnabled) {
@@ -275,7 +300,7 @@ public class AutoChatbotModule extends Module {
         List<ConversationMessage> conversationHistory = new ArrayList<>();
         conversationHistory.add(new ConversationMessage("user", contextBuilder.toString() + "\nPlayer '" + senderName + "' triggered AI with: " + triggerMessage));
 
-        String finalResponse = openAIClient.generateResponseSync(PLUGIN_CONFIG.aiSystemPrompt, conversationHistory);
+        String finalResponse = openAIClient.generateResponseSync(PLUGIN_CONFIG.aiSystemPrompt + CHAT_LENGTH_HINT, conversationHistory);
 
         if (finalResponse.isEmpty()) {
             LOG.error("AI response was empty or failed");
@@ -312,7 +337,7 @@ public class AutoChatbotModule extends Module {
         conversationHistory.add(new ConversationMessage("user", message));
 
         // Get AI response
-        String response = openAIClient.generateResponseSync(PLUGIN_CONFIG.aiSystemPrompt, conversationHistory);
+        String response = openAIClient.generateResponseSync(PLUGIN_CONFIG.aiSystemPrompt + CHAT_LENGTH_HINT, conversationHistory);
 
         if (response.isEmpty()) {
             LOG.error("AI response was empty for player {}", playerName);
@@ -329,28 +354,105 @@ public class AutoChatbotModule extends Module {
         sendWhisper(playerName, response);
     }
 
+    private static final int MC_CHAT_MAX_LENGTH = 256;
+    private static final int MAX_SPLIT_MESSAGES = 3; // Don't spam too many messages
+    private static final String CHAT_LENGTH_HINT =
+        " IMPORTANT: You are chatting in Minecraft. Keep ALL responses under 200 characters total. Be brief, casual, one or two short sentences max. Never use bullet points or lists.";
+
     /**
-     * Send a chat response with optional typing delay
+     * Send a chat response with optional typing delay.
+     * Splits long messages to fit Minecraft's 256 char limit.
      */
     private void sendResponse(String message) {
-        if (PLUGIN_CONFIG.typingDelay.enabled && PLUGIN_CONFIG.typingDelay.charsPerMinute > 0) {
-            long delayMs = (long) ((double) message.length() / PLUGIN_CONFIG.typingDelay.charsPerMinute * 60000);
-            delayMs = Math.max(100, Math.min(delayMs, 30000));
-            scheduler.schedule(() -> {
-                sendClientPacketAsync(new ServerboundChatPacket(message));
-            }, delayMs, TimeUnit.MILLISECONDS);
-        } else {
+        if (scheduler.isShutdown()) {
+            LOG.warn("Scheduler shutdown, sending message immediately without typing delay");
             sendClientPacketAsync(new ServerboundChatPacket(message));
+            return;
+        }
+
+        if (!PLUGIN_CONFIG.typingDelay.enabled || PLUGIN_CONFIG.typingDelay.charsPerMinute <= 0) {
+            LOG.debug("Typing delay disabled (enabled={}, cpm={}), sending immediately",
+                    PLUGIN_CONFIG.typingDelay.enabled, PLUGIN_CONFIG.typingDelay.charsPerMinute);
+        }
+
+        List<String> parts = splitMessage(message, MC_CHAT_MAX_LENGTH);
+        long cumulativeDelay = 0;
+
+        for (String part : parts) {
+            if (PLUGIN_CONFIG.typingDelay.enabled && PLUGIN_CONFIG.typingDelay.charsPerMinute > 0) {
+                long delayMs = (long) ((double) part.length() / PLUGIN_CONFIG.typingDelay.charsPerMinute * 60000);
+                delayMs = Math.max(100, Math.min(delayMs, 30000));
+                cumulativeDelay += delayMs;
+                final long delay = cumulativeDelay;
+                scheduler.schedule(() -> {
+                    sendClientPacketAsync(new ServerboundChatPacket(part));
+                }, delay, TimeUnit.MILLISECONDS);
+            } else {
+                final long delay = cumulativeDelay;
+                scheduler.schedule(() -> {
+                    sendClientPacketAsync(new ServerboundChatPacket(part));
+                }, delay, TimeUnit.MILLISECONDS);
+                cumulativeDelay += 500; // small delay between split messages
+            }
         }
     }
 
     /**
-     * Send a whisper message to a player
+     * Send a whisper message to a player.
+     * Splits long messages to fit Minecraft's 256 char limit.
      */
     private void sendWhisper(String playerName, String message) {
-        // Format: /msg <playerName> <message>
-        String command = "/msg " + playerName + " " + message;
-        sendClientPacketAsync(new ServerboundChatPacket(command));
+        String prefix = "/msg " + playerName + " ";
+        int maxContentLen = MC_CHAT_MAX_LENGTH - prefix.length();
+        List<String> parts = splitMessage(message, maxContentLen);
+        long cumulativeDelay = 0;
+
+        for (String part : parts) {
+            String command = prefix + part;
+            final long delay = cumulativeDelay;
+            scheduler.schedule(() -> {
+                sendClientPacketAsync(new ServerboundChatPacket(command));
+            }, delay, TimeUnit.MILLISECONDS);
+            cumulativeDelay += 500;
+        }
+    }
+
+    /**
+     * Split a message into chunks that fit within maxLength.
+     * Tries to split on spaces/newlines. Caps at MAX_SPLIT_MESSAGES.
+     */
+    private List<String> splitMessage(String message, int maxLength) {
+        // Replace newlines with spaces for cleaner chat output
+        message = message.replace("\n", " ").replace("\r", "").trim();
+
+        if (message.length() <= maxLength) {
+            return List.of(message);
+        }
+
+        List<String> parts = new ArrayList<>();
+        int start = 0;
+        while (start < message.length() && parts.size() < MAX_SPLIT_MESSAGES) {
+            int end = Math.min(start + maxLength, message.length());
+            if (end < message.length()) {
+                // Try to split on a space
+                int lastSpace = message.lastIndexOf(' ', end);
+                if (lastSpace > start) {
+                    end = lastSpace;
+                }
+            }
+            parts.add(message.substring(start, end).trim());
+            start = end + 1; // skip the space
+        }
+
+        // If there's still leftover text, append "..." to the last part
+        if (start < message.length() && !parts.isEmpty()) {
+            String last = parts.get(parts.size() - 1);
+            if (last.length() + 3 <= maxLength) {
+                parts.set(parts.size() - 1, last + "...");
+            }
+        }
+
+        return parts;
     }
 
     /**
@@ -377,3 +479,5 @@ public class AutoChatbotModule extends Module {
         }
     }
 }
+
+
