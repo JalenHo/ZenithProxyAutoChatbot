@@ -158,6 +158,17 @@ public class AutoChatbotModule extends Module {
         String message = event.message();
         String messageLower = message.toLowerCase();
 
+        // Strip sender name from message if it's included (some servers include "username message" in the raw event)
+        if (senderName != null && messageLower.startsWith(senderName.toLowerCase())) {
+            String stripped = message.substring(senderName.length());
+            // Remove leading separators like ": ", " > ", " » ", space, etc.
+            stripped = stripped.replaceAll("^\\s*[>:»]\\s*", "").trim();
+            if (!stripped.isEmpty()) {
+                message = stripped;
+                messageLower = message.toLowerCase();
+            }
+        }
+
         // ---- AI Server Chat ----
         if (PLUGIN_CONFIG.aiEnabled && PLUGIN_CONFIG.aiServerChatEnabled && PLUGIN_CONFIG.aiChatContextLength > 0) {
             addToChatHistory(senderName, message);
