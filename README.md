@@ -1,23 +1,37 @@
 # ZenithProxy Auto Chatbot Plugin
 
-A [ZenithProxy](https://github.com/rfresh2/ZenithProxy) plugin that automatically responds to keyword triggers in server chat.
+A [ZenithProxy](https://github.com/rfresh2/ZenithProxy) plugin that automatically responds to keyword triggers and AI-powered conversations in Minecraft chat.
 
 ## Features
 
+### Keyword Auto-Chat
 - **Keyword Triggers** — Define keywords that the bot listens for in public chat messages
 - **Random Responses** — Each keyword maps to a list of responses; one is picked at random
-- **Typing Delay** — Simulates human typing speed before sending (default 200 CPM ≈ 40 WPM)
 - **Cooldown** — Configurable cooldown (default 3s) to prevent spam
-- **Multi-Bot Support** — Ignore list for other bot accounts on the same server
 - **Case-Insensitive** — Keyword matching is case-insensitive substring matching
+
+### AI Chatbot
+- **AI DM Responses** — Bot responds to `/msg` whispers automatically via AI
+- **AI Server Chat** — Bot reads public chat and responds when trigger keywords match (e.g. its name)
+- **Player Memory** — Remembers conversations with individual players
+- **Context Awareness** — Includes recent server chat as context for better responses
+- **Customizable Personality** — Configurable system prompt for the bot's behavior
+
+### General
+- **Typing Delay** — Simulates human typing speed before sending (default 200 CPM ≈ 40 WPM)
+- **Multi-Bot Support** — Ignore list for other bot accounts on the same server
+- **Independent Toggles** — Keyword auto-chat and AI work independently — use one, both, or neither
+- **Codex CLI Config** — Load model, API key, and reasoning effort from `config.toml` + `auth.json`
 - **Full Command Config** — All settings manageable via proxy commands
 
 ## Commands
 
+### General
+
 | Command | Description |
 |---------|-------------|
 | `autoChatbot status` | Show current status and all settings |
-| `autoChatbot on/off` | Toggle the chatbot module |
+| `autoChatbot on/off` | Toggle keyword auto-chat |
 | `autoChatbot cooldown <ms>` | Set response cooldown in milliseconds |
 
 ### Keyword Management
@@ -51,6 +65,54 @@ Simulates human typing speed — delay is calculated from message length and con
 - Default: **200 CPM** (~40 WPM)
 - Delay clamped between 100ms and 30s
 
+### AI Commands
+
+| Command | Description |
+|---------|-------------|
+| `autoChatbot ai on/off` | Toggle AI chatbot (independent from keyword auto-chat) |
+| `autoChatbot ai serverChat on/off` | Toggle AI reading/responding to public chat |
+| `autoChatbot ai apiKey <key>` | Set OpenAI API key |
+| `autoChatbot ai model <model>` | Set AI model (e.g. `gpt-4o-mini`, `gpt-5.5`) |
+| `autoChatbot ai prompt <system-prompt>` | Set the AI's personality/behavior |
+| `autoChatbot ai contextLength <count>` | Number of recent chat messages for context (0-100) |
+| `autoChatbot ai reasoningEffort <level>` | Set reasoning effort: `low`, `medium`, `high`, `xhigh` |
+| `autoChatbot ai loadConfig` | Load settings from Codex config files |
+| `autoChatbot ai triggerKeyword add <keyword>` | Add a keyword that triggers AI in public chat |
+| `autoChatbot ai triggerKeyword remove <keyword>` | Remove a trigger keyword |
+| `autoChatbot ai triggerKeyword list` | List all trigger keywords |
+| `autoChatbot ai memory clear <player>` | Clear conversation memory for a player |
+
+## Codex CLI Config Support
+
+You can configure the bot by placing Codex CLI config files in the plugin data folder:
+
+```
+plugins/auto-chatbot/codex/config.toml
+plugins/auto-chatbot/codex/auth.json
+```
+
+**config.toml:**
+```toml
+model_provider = "OpenAI"
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+
+[model_providers.OpenAI]
+name = "OpenAI"
+base_url = "https://go2api.cc"
+wire_api = "responses"
+requires_openai_auth = true
+```
+
+**auth.json:**
+```json
+{
+  "OPENAI_API_KEY": "sk-your-api-key-here"
+}
+```
+
+The plugin auto-loads these files on startup, or use `/autoChatbot ai loadConfig` to reload manually.
+
 ## Configuration
 
 The plugin config (`auto-chatbot.json`) is auto-generated on first run:
@@ -64,7 +126,17 @@ The plugin config (`auto-chatbot.json`) is auto-generated on first run:
     "enabled": true,
     "charsPerMinute": 200
   },
-  "keywords": []
+  "keywords": [],
+  "aiEnabled": false,
+  "aiServerChatEnabled": false,
+  "openaiApiKey": "",
+  "openaiModel": "gpt-4o-mini",
+  "openaiBaseUrl": "https://api.openai.com",
+  "openaiReasoningEffort": "",
+  "aiSystemPrompt": "You are a helpful assistant responding in Minecraft chat. Keep responses brief and conversational. You have memory of previous conversations.",
+  "aiChatContextLength": 10,
+  "aiTriggerKeywords": [],
+  "aiMemoryPath": "plugins/auto-chatbot/memory/"
 }
 ```
 
