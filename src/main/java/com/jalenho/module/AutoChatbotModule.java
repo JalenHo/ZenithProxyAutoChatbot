@@ -61,7 +61,18 @@ public class AutoChatbotModule extends Module {
             return;
         }
 
-        String messageLower = event.message().toLowerCase();
+        String message = event.message();
+
+        // Strip sender name from message if it's included (some servers include "username message" in the raw event)
+        if (senderName != null && message.toLowerCase().startsWith(senderName.toLowerCase())) {
+            String stripped = message.substring(senderName.length());
+            stripped = stripped.replaceAll("^\\s*[>:»]\\s*", "").trim();
+            if (!stripped.isEmpty()) {
+                message = stripped;
+            }
+        }
+
+        String messageLower = message.toLowerCase();
 
         for (var entry : PLUGIN_CONFIG.keywords) {
             if (entry.keyword.isEmpty() || entry.responses.isEmpty()) continue;
