@@ -212,19 +212,32 @@ public class AutoChatbotCommand extends Command {
             // ==================== AI Commands ====================
             .then(literal("ai")
                 // ai on/off
-                .then(argument("toggle", toggle()).executes(c -> {
-                    PLUGIN_CONFIG.aiEnabled = getToggle(c, "toggle");
+                .then(literal("on").executes(c -> {
+                    PLUGIN_CONFIG.aiEnabled = true;
                     MODULE.get(AutoChatbotModule.class).syncAIFromConfig();
                     c.getSource().getEmbed()
-                        .title("AI Chatbot " + toggleStrCaps(PLUGIN_CONFIG.aiEnabled));
+                        .title("AI Chatbot ON");
+                }))
+                .then(literal("off").executes(c -> {
+                    PLUGIN_CONFIG.aiEnabled = false;
+                    MODULE.get(AutoChatbotModule.class).syncAIFromConfig();
+                    c.getSource().getEmbed()
+                        .title("AI Chatbot OFF");
                 }))
                 // ai serverChat on/off
-                .then(literal("serverChat").then(argument("toggle", toggle()).executes(c -> {
-                    PLUGIN_CONFIG.aiServerChatEnabled = getToggle(c, "toggle");
-                    c.getSource().getEmbed()
-                        .title("AI Server Chat " + toggleStrCaps(PLUGIN_CONFIG.aiServerChatEnabled))
-                        .addField("Note", "When enabled, AI will respond to server chat when trigger keywords are matched");
-                })))
+                .then(literal("serverChat")
+                    .then(literal("on").executes(c -> {
+                        PLUGIN_CONFIG.aiServerChatEnabled = true;
+                        c.getSource().getEmbed()
+                            .title("AI Server Chat ON")
+                            .addField("Note", "AI will respond to server chat when trigger keywords are matched");
+                    }))
+                    .then(literal("off").executes(c -> {
+                        PLUGIN_CONFIG.aiServerChatEnabled = false;
+                        c.getSource().getEmbed()
+                            .title("AI Server Chat OFF");
+                    }))
+                )
                 // ai apiKey <key>
                 .then(literal("apiKey").then(argument("key", greedyString()).executes(c -> {
                     String key = getString(c, "key").trim();
