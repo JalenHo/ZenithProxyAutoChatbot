@@ -88,7 +88,6 @@ public class CodexConfigLoader {
 
         if (apiKey != null && !apiKey.isBlank()) {
             config.openaiApiKey = apiKey;
-            config.aiEnabled = true;
         }
         if (model != null && !model.isBlank()) {
             config.openaiModel = model;

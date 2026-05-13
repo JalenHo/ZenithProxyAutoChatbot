@@ -235,6 +235,16 @@ public class AutoChatbotModule extends Module {
                 }
             }
         }
+
+        // ignore configured accounts
+        if (senderName != null) {
+            for (String ignored : PLUGIN_CONFIG.ignoredAccounts) {
+                if (senderName.equalsIgnoreCase(ignored)) {
+                    return;
+                }
+            }
+        }
+
         String message = event.message();
 
         if (senderName == null || message == null || message.isBlank()) {
