@@ -99,7 +99,7 @@ model_reasoning_effort = "xhigh"
 
 [model_providers.OpenAI]
 name = "OpenAI"
-base_url = "https://go2api.cc"
+base_url = "[https://api.openai.com]"
 wire_api = "responses"
 requires_openai_auth = true
 ```
